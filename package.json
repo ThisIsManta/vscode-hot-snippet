@@ -1,0 +1,87 @@
+{
+    "name": "hot-snippet",
+    "displayName": "Manta's Hot Snippet",
+    "description": "Insert snippets sparklingly.",
+    "version": "0.0.1",
+    "publisher": "thisismanta",
+    "categories": [
+        "Snippets"
+    ],
+    "keywords": [
+        "snippet"
+    ],
+    "repository": {
+        "url": "https://github.com/ThisIsManta/vscode-hot-snippet"
+    },
+    "bugs": {
+        "url": "https://github.com/ThisIsManta/vscode-hot-snippet/issues"
+    },
+    "galleryBanner": {
+        "color": "#212121",
+        "theme": "dark"
+    },
+    "engines": {
+        "vscode": "^1.36.0"
+    },
+    "activationEvents": [
+        "onLanguage:javascript",
+        "onLanguage:javascriptreact",
+        "onLanguage:typescript",
+        "onLanguage:typescriptreact"
+    ],
+    "main": "./dist/extension",
+    "contributes": {
+        "commands": [
+            {
+                "command": "importQuicken.addImport",
+                "title": "Add Import/Require",
+                "category": "Import Quicken"
+            },
+            {
+                "command": "importQuicken.fixImport",
+                "title": "Fix Import/Require",
+                "category": "Import Quicken"
+            },
+            {
+                "command": "importQuicken.convertImport",
+                "title": "Convert Require To Import",
+                "category": "Import Quicken"
+            }
+        ],
+        "configuration": {
+            "title": "Import Quicken",
+            "properties": {
+                "importQuicken.javascript.filter": {
+                    "description": "Filter the files shown in the list when adding an import/require statement. Both keys and values must be written in regular expression. For example, you are working on a file named \"foo.js\", and you want to see only the files ending with \".test.js\" in the list when adding an import statement, then you must set this to `{ \"/foo\\\\.js$\": \"\\\\.test\\\\.js$\" }`. Note that the path separators will always be POSIX slash characters. The term `${TM_FILENAME_BASE}` in your right-side regular expression will be replaced with the active file name without its extension.",
+                    "type": "object",
+                    "patternProperties": {
+                        ".": {
+                            "type": "string"
+                        }
+                    },
+                    "default": {}
+                }
+            }
+        }
+    },
+    "scripts": {
+        "compile": "tsc --watch --project ./",
+        "vscode:prepublish": "tsc --skipLibCheck --project ./ && parcel build ./dist/extension.js --target node",
+        "preversion": "git push --dry-run origin master:master",
+        "version": "vsce publish",
+        "postversion": "git push --tags --quiet origin master:master"
+    },
+    "devDependencies": {
+        "@types/lodash": "^4.14.135",
+        "@types/mz": "0.0.32",
+        "@types/node": "^10.0.0",
+        "@types/vscode": "1.36.0",
+        "parcel-bundler": "^1.12.3",
+        "vscode": "^1.1.35"
+    },
+    "dependencies": {
+        "lodash": "^4.17.15",
+        "mz": "^2.7.0",
+        "typescript": "^3.5.2"
+    }
+}
