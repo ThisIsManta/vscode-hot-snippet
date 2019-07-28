@@ -72,10 +72,24 @@ export async function activate(context: vscode.ExtensionContext) {
         startingPosition = editor ? editor.selection.active : new vscode.Position(0, 0)
     }))
 
-    let delay = 300
+    let delay = 250
+    let enterAccepted = false
     function setConfigurations() {
         if (vscode.window.activeTextEditor) {
-            delay = vscode.workspace.getConfiguration('editor', vscode.window.activeTextEditor.document.uri).get<number>('quickSuggestionsDelay')!
+            const config = vscode.workspace.getConfiguration('editor', vscode.window.activeTextEditor.document.uri)
+
+            delay = config.get<number>('quickSuggestionsDelay')!
+            if (delay < 250) {
+                vscode.window.showWarningMessage(
+                    `"editor.quickSuggestionsDelay" is set to ${delay}ms, which is too short.
+                    You might find it hard to insert a snippet using this extension as it might trigger IntelliSense menu instead.`)
+            }
+
+            enterAccepted = config.get<string>('acceptSuggestionOnEnter') !== 'off'
+
+            if (config.get<string>('snippetSuggestions') !== 'none') {
+                config.update('snippetSuggestions', 'none', vscode.ConfigurationTarget.Global)
+            }
         }
     }
     setConfigurations()
@@ -110,7 +124,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 cursor = rootCursor
             }, delay)
 
-            if (/^\n(\s|\t)*$/.test(change.text) || change.text === ' ') {
+            if (change.text === ' ' || enterAccepted && /^\n(\s|\t)*$/.test(change.text)) {
                 const { snippet } = cursor // Capture `snippet` as `edit.delete` below resets `cursor` to `rootCursor`
                 if (!snippet) {
                     cursor = rootCursor
