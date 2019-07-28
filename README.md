@@ -1,23 +1,9 @@
-**Import Quicken** is yet another Visual Studio Code extension that helps inserting `import`/`require` snippets in JavaScript, TypeScript, and Stylus.
+**Hot Snippet** is a Visual Studio Code extension that helps inserting user-defined snippets in a blazing fast way.
 
-This extension is formerly named **Code Quicken** and heavily inspired by [**Quick Require**](https://marketplace.visualstudio.com/items?itemName=milkmidi.vs-code-quick-require), but it is written from scratch because it supports only `import` and `require` in JavaScript and could not be customized at all. For example, in some JavaScript convention, you might want to omit the file extension (`.js`) and the semi-colon (`;`) at the end of the line, hence it becomes `import MyFile from './MyFile'`.
-
-## Available commands
-
-- Insert an import/require statement (default keybinding: _Ctrl+Shift+I_)
-- Fix broken import/require statements
-- Convert require to import statements
+The problem with Visual Studio Code built-in snippets via IntelliSense menu is **too slow to show up**. Users who are typically type quickly will get annoyed by the slowness of IntelliSense menu, especially in a big repository.
 
 ## Basic usage
 
-Simply press _Ctrl+Shift+I_ on your keyboard to list all matching identifiers, and choose one file that you would like to insert a snippet based on it.
+As soon as the extension is activated, it automatically sets `editor.snippetSuggestions` to `"off"`. Your key strokes are being monitored; whenever the key sequence matches the `prefix` defined in the user snippets (_File > Preferences > User Snippets_) and followed by Space (or Enter key, if `editor.acceptSuggestionOnEnter` is set to `"on"` or `"smart"`), it quickly inserts the matching snippet without waiting for IntelliSense menu.
 
-![Add an import statement](docs/add-import.gif)
-
-Fixing broken path in an `import`/`require` statement has never been this easy. The command _Import Quicken: Fix Import/Require_ will try to find the closest match based on the file path without hassle. If more than one match is found, the extension will prompt you.
-
-![Fix broken import statements](docs/fix-import.gif)
-
-## Configurations
-
-This extension offers very minimal configurations. JavaScript/TypeScript convention is automatically recognized and replicated across the workspace when adding a new `import`/`require` statement.
+Note that if the delay between each of your key sequence is longer than `editor.quickSuggestionsDelay`, the snippet will not be triggered.
