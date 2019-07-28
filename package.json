@@ -29,7 +29,7 @@
     "main": "./dist/extension",
     "scripts": {
         "compile": "tsc --watch --project ./",
-        "vscode:prepublish": "tsc --skipLibCheck --project ./ && parcel build ./dist/extension.js --target node",
+        "vscode:prepublish": "tsc --skipLibCheck --project ./",
         "preversion": "git push --dry-run origin master:master",
         "version": "vsce publish",
         "postversion": "git push --tags --quiet origin master:master"
@@ -39,7 +39,6 @@
         "@types/mz": "0.0.32",
         "@types/node": "^10.0.0",
         "@types/vscode": "1.36.0",
-        "parcel-bundler": "^1.12.3",
         "vscode": "^1.1.35"
     },
     "dependencies": {
