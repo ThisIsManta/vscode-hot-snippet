@@ -1,30 +1,82 @@
+import { fs } from 'mz'
+import * as JSON5 from 'json5'
+import * as fp from 'path'
 import * as _ from 'lodash'
 import * as vscode from 'vscode'
 
 interface INode {
     children: Map<string, INode>
-    snippet?: string
+    snippet?: string | Array<string>
 }
 
 export async function activate(context: vscode.ExtensionContext) {
+    const languageToRootCursorMap = new Map<string, INode>()
 
-    const fx: INode = { children: new Map([['x', { children: new Map(), snippet: 'function' }]]) }
-    const lg: INode = { children: new Map([['g', { children: new Map(), snippet: 'console.log($0)' }]]) }
-    const rootCursor: INode = { children: new Map([['f', fx], ['l', lg]]) }
+    const snippetDirectoryPath = fp.resolve(context.globalStoragePath, '..', '..', 'snippets')
+    const snippetFileNameList = await fs.readdir(snippetDirectoryPath)
+    for (const fileName of snippetFileNameList) {
+        await setSnippetTemplate(fileName)
+    }
 
-    let cursor: INode = rootCursor
+    const snippetWatcher = vscode.workspace.createFileSystemWatcher(snippetDirectoryPath + fp.sep + '*.json', false, false, true)
+    context.subscriptions.push(snippetWatcher.onDidCreate(e => {
+        setSnippetTemplate(fp.basename(e.fsPath))
+    }))
+    context.subscriptions.push(snippetWatcher.onDidChange(e => {
+        setSnippetTemplate(fp.basename(e.fsPath))
+    }))
+    context.subscriptions.push(snippetWatcher.onDidDelete(e => {
+        languageToRootCursorMap.delete(fp.basename(e.fsPath).replace(/\.json$/, ''))
+    }))
+
+    async function setSnippetTemplate(fileName: string) {
+        try {
+            const rootCursor: INode = { children: new Map() }
+            languageToRootCursorMap.set(fileName.replace(/\.json$/, ''), rootCursor)
+
+            const text = await fs.readFile(fp.join(snippetDirectoryPath, fileName), 'utf-8')
+            const json = JSON5.parse(text) as { [name: string]: { prefix: string, body: string | Array<string> } }
+            const list = _.toPairs(json)
+            for (const [, item] of list) {
+                const charList = item.prefix.split('')
+                let lastCursor = rootCursor
+                for (let rank = 0; rank < charList.length; rank++) {
+                    const char = charList[rank]
+                    let nextCursor = lastCursor.children.get(char)
+                    if (nextCursor) {
+                        lastCursor = nextCursor
+                    } else {
+                        nextCursor = { children: new Map() }
+                        lastCursor.children.set(char, nextCursor)
+                        lastCursor = nextCursor
+                    }
+
+                    if (rank === charList.length - 1) {
+                        lastCursor.snippet = item.body
+                    }
+                }
+            }
+
+        } catch (ex) {
+            console.error(`Error parsing file ${fileName}:\n`, ex)
+        }
+    }
+
+    let cursor: INode | null = null
     let startingPosition: vscode.Position = new vscode.Position(0, 0)
     let timeout: NodeJS.Timeout | null = null
     let editing = false
 
     context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {
-        cursor = rootCursor
+        cursor = null
         startingPosition = editor ? editor.selection.active : new vscode.Position(0, 0)
     }))
 
     let delay = 300
     function setConfigurations() {
-        delay = vscode.workspace.getConfiguration('editor').get<number>('quickSuggestionsDelay')!
+        if (vscode.window.activeTextEditor) {
+            delay = vscode.workspace.getConfiguration('editor', vscode.window.activeTextEditor.document.uri).get<number>('quickSuggestionsDelay')!
+        }
     }
     setConfigurations()
     context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(async e => {
@@ -36,9 +88,18 @@ export async function activate(context: vscode.ExtensionContext) {
             return
         }
 
+        const rootCursor = languageToRootCursorMap.get(e.document.languageId)
+        if (!rootCursor) {
+            return
+        }
+
         for (const change of e.contentChanges) {
             if (change.rangeLength > 0) {
                 cursor = rootCursor
+                continue
+            }
+
+            if (cursor === null) {
                 continue
             }
 
@@ -66,9 +127,13 @@ export async function activate(context: vscode.ExtensionContext) {
                     await editor.edit(edit => {
                         edit.delete(range)
                     })
-                    const trailingSpaceNeeded = change.text === ' ' && /^\w+$/.test(snippet)
-                    await editor.insertSnippet(new vscode.SnippetString(trailingSpaceNeeded ? _.trimEnd(snippet) + ' ' : snippet))
+
+                    const snippetText = Array.isArray(snippet)
+                        ? snippet.join(editor.document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n')
+                        : snippet
+                    await editor.insertSnippet(new vscode.SnippetString(snippetText))
                     editing = false
+
                     continue
                 }
             }
