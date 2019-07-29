@@ -4,106 +4,79 @@ import * as fp from 'path'
 import * as _ from 'lodash'
 import * as vscode from 'vscode'
 
-interface INode {
-    children: Map<string, INode>
+interface ICursor {
+    children: Map<string, ICursor>
     snippet?: string | Array<string>
 }
 
 export async function activate(context: vscode.ExtensionContext) {
-    const languageToRootCursorMap = new Map<string, INode>()
+    const languageToRootCursorMap = new Map<vscode.TextDocument['languageId'], ICursor>()
 
+    // Read user-defined snippets
     const snippetDirectoryPath = fp.resolve(context.globalStoragePath, '..', '..', 'snippets')
     const snippetFileNameList = await fs.readdir(snippetDirectoryPath)
     for (const fileName of snippetFileNameList) {
-        await setSnippetTemplate(fileName)
+        const { language, rootCursor } = await getSnippetTree(fp.join(snippetDirectoryPath, fileName))
+        languageToRootCursorMap.set(language, rootCursor)
     }
 
+    // Watch user-defined snippets
     const snippetWatcher = vscode.workspace.createFileSystemWatcher(snippetDirectoryPath + fp.sep + '*.json', false, false, true)
-    context.subscriptions.push(snippetWatcher.onDidCreate(e => {
-        setSnippetTemplate(fp.basename(e.fsPath))
+    context.subscriptions.push(snippetWatcher)
+    context.subscriptions.push(snippetWatcher.onDidCreate(async e => {
+        const { language, rootCursor } = await getSnippetTree(e.fsPath)
+        languageToRootCursorMap.set(language, rootCursor)
     }))
-    context.subscriptions.push(snippetWatcher.onDidChange(e => {
-        setSnippetTemplate(fp.basename(e.fsPath))
+    context.subscriptions.push(snippetWatcher.onDidChange(async e => {
+        const { language, rootCursor } = await getSnippetTree(e.fsPath)
+        languageToRootCursorMap.set(language, rootCursor)
     }))
     context.subscriptions.push(snippetWatcher.onDidDelete(e => {
         languageToRootCursorMap.delete(fp.basename(e.fsPath).replace(/\.json$/, ''))
     }))
 
-    async function setSnippetTemplate(fileName: string) {
-        try {
-            const rootCursor: INode = { children: new Map() }
-            languageToRootCursorMap.set(fileName.replace(/\.json$/, ''), rootCursor)
+    // Represent a hop limit between key strokes in milliseconds
+    let delay = 250
 
-            const text = await fs.readFile(fp.join(snippetDirectoryPath, fileName), 'utf-8')
-            const json = JSON5.parse(text) as { [name: string]: { prefix: string, body: string | Array<string> } }
-            const list = _.toPairs(json)
-            for (const [, item] of list) {
-                const charList = item.prefix.split('')
-                let lastCursor = rootCursor
-                for (let rank = 0; rank < charList.length; rank++) {
-                    const char = charList[rank]
-                    let nextCursor = lastCursor.children.get(char)
-                    if (nextCursor) {
-                        lastCursor = nextCursor
-                    } else {
-                        nextCursor = { children: new Map() }
-                        lastCursor.children.set(char, nextCursor)
-                        lastCursor = nextCursor
-                    }
+    // Represent whether the Enter key will trigger the snippet
+    let enterKeyAccepted = false
 
-                    if (rank === charList.length - 1) {
-                        lastCursor.snippet = item.body
-                    }
-                }
-            }
-
-        } catch (ex) {
-            console.error(`Error parsing file ${fileName}:\n`, ex)
-        }
+    // Read VSCode configurations
+    const configs = getConfigurations()
+    if (configs) {
+        delay = configs.delay
+        enterKeyAccepted = configs.enterKeyAccepted
     }
+    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(() => {
+        const configs = getConfigurations()
+        if (configs) {
+            delay = configs.delay
+            enterKeyAccepted = configs.enterKeyAccepted
+        }
+    }))
 
-    let cursor: INode | null = null
+    let cursor: ICursor | null = null
     let startingPosition: vscode.Position = new vscode.Position(0, 0)
     let timeout: NodeJS.Timeout | null = null
     let editing = false
+    let tabStop = getTabStop(vscode.window.activeTextEditor)
 
+    // Reset the current cursor when switching editors
     context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {
         cursor = null
         startingPosition = editor ? editor.selection.active : new vscode.Position(0, 0)
-    }))
-
-    let delay = 250
-    let enterAccepted = false
-    function setConfigurations() {
-        if (vscode.window.activeTextEditor) {
-            const config = vscode.workspace.getConfiguration('editor', vscode.window.activeTextEditor.document.uri)
-
-            delay = config.get<number>('quickSuggestionsDelay')!
-            if (delay < 250) {
-                vscode.window.showWarningMessage(
-                    `"editor.quickSuggestionsDelay" is set to ${delay}ms, which is too short.
-                    You might find it hard to insert a snippet using this extension as it might trigger IntelliSense menu instead.`)
-            }
-
-            enterAccepted = config.get<string>('acceptSuggestionOnEnter') !== 'off'
-
-            if (config.get<string>('snippetSuggestions') !== 'none') {
-                config.update('snippetSuggestions', 'none', vscode.ConfigurationTarget.Global)
-            }
-        }
-    }
-    setConfigurations()
-    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(async e => {
-        setConfigurations()
+        tabStop = getTabStop(editor)
     }))
 
     context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(async e => {
+        // Prevent the unwanted side effects from `editor.edit()` and `editor.insertSnippet()`
         if (editing) {
             return
         }
 
         const rootCursor = languageToRootCursorMap.get(e.document.languageId)
         if (!rootCursor) {
+            cursor = null
             return
         }
 
@@ -120,36 +93,39 @@ export async function activate(context: vscode.ExtensionContext) {
             if (timeout !== null) {
                 clearTimeout(timeout)
             }
-            timeout = setTimeout(() => {
-                cursor = rootCursor
-            }, delay)
 
-            if (change.text === ' ' || enterAccepted && /^\n(\s|\t)*$/.test(change.text)) {
-                const { snippet } = cursor // Capture `snippet` as `edit.delete` below resets `cursor` to `rootCursor`
+            if (change.text === tabStop || enterKeyAccepted && /^\n(\s|\t)*$/.test(change.text)) {
+                const editor = vscode.window.activeTextEditor
+                if (!editor) {
+                    cursor = null
+                    continue
+                }
+
+                const { snippet } = cursor // Capture `snippet` as `cursor` might be changed from an unwanted side effect
                 if (!snippet) {
                     cursor = rootCursor
                     continue
                 }
 
-                const editor = vscode.window.activeTextEditor
-                if (editor) {
-                    editing = true
-                    const range = new vscode.Range(
-                        startingPosition,
-                        editor.document.positionAt(change.rangeOffset + change.text.length)
-                    )
-                    await editor.edit(edit => {
-                        edit.delete(range)
-                    })
+                editing = true
 
-                    const snippetText = Array.isArray(snippet)
-                        ? snippet.join(editor.document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n')
-                        : snippet
-                    await editor.insertSnippet(new vscode.SnippetString(snippetText))
-                    editing = false
+                const range = new vscode.Range(
+                    startingPosition,
+                    editor.document.positionAt(change.rangeOffset + change.text.length)
+                )
+                await editor.edit(edit => {
+                    edit.delete(range)
+                })
 
-                    continue
-                }
+                const snippetText = Array.isArray(snippet)
+                    ? snippet.join(editor.document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n')
+                    : snippet
+                await editor.insertSnippet(new vscode.SnippetString(snippetText))
+
+                editing = false
+
+                cursor = rootCursor
+                continue
             }
 
             const nextCursor = cursor.children.get(change.text)
@@ -161,16 +137,94 @@ export async function activate(context: vscode.ExtensionContext) {
             if (cursor === rootCursor) {
                 const θ = e.document.positionAt(change.rangeOffset)
                 if (θ.character > 0 && validJavaScriptIdentifier.test(e.document.getText(new vscode.Range(θ.translate(0, -1), θ)))) {
+                    cursor = rootCursor
                     continue
                 }
 
                 startingPosition = θ
             }
 
+            timeout = setTimeout(() => {
+                cursor = rootCursor
+            }, delay)
+
             cursor = nextCursor
             continue
         }
     }))
+}
+
+async function getSnippetTree(filePath: string) {
+    const language = fp.basename(filePath).replace(/\.json$/, '').toLowerCase()
+    const rootCursor: ICursor = { children: new Map() }
+
+    try {
+        const text = await fs.readFile(filePath, 'utf-8')
+        const json = JSON5.parse(text) as { [name: string]: { prefix: string, body: string | Array<string> } }
+        const list = _.toPairs(json)
+        for (const [, item] of list) {
+            const charList = item.prefix.split('')
+            let lastCursor = rootCursor
+            for (let rank = 0; rank < charList.length; rank++) {
+                const char = charList[rank]
+                let nextCursor = lastCursor.children.get(char)
+                if (nextCursor) {
+                    lastCursor = nextCursor
+
+                } else {
+                    nextCursor = { children: new Map() }
+                    lastCursor.children.set(char, nextCursor)
+                    lastCursor = nextCursor
+                }
+
+                if (rank === charList.length - 1) {
+                    lastCursor.snippet = item.body
+                }
+            }
+        }
+
+    } catch (ex) {
+        console.error(`Error parsing file ${filePath}:\n`, ex)
+    }
+
+    return { language, rootCursor }
+}
+
+function getConfigurations() {
+    if (vscode.window.activeTextEditor) {
+        const config = vscode.workspace.getConfiguration('editor', vscode.window.activeTextEditor.document.uri)
+
+        let delay = config.get<number>('quickSuggestionsDelay')!
+        if (delay < 250) {
+            vscode.window.showWarningMessage(
+                `"editor.quickSuggestionsDelay" is set to ${delay}ms, which is too short.
+                    You might find it hard to insert a snippet using this extension as it might trigger IntelliSense menu instead.`)
+        }
+
+        const enterKeyAccepted = config.get<string>('acceptSuggestionOnEnter') !== 'off'
+
+        if (config.get<string>('snippetSuggestions') !== 'none') {
+            config.update('snippetSuggestions', 'none', vscode.ConfigurationTarget.Global)
+        }
+
+        return { delay, enterKeyAccepted }
+    }
+}
+
+function getTabStop(editor: vscode.TextEditor | undefined) {
+    if (!editor) {
+        return '\t'
+    }
+
+    if (!editor.options.insertSpaces) {
+        return '\t'
+    }
+
+    if (_.isNumber(editor.options.tabSize)) {
+        return ' '.repeat(editor.options.tabSize)
+    }
+
+    return '\t'
 }
 
 // Copy from https://mathiasbynens.be/demo/javascript-identifier-regex
