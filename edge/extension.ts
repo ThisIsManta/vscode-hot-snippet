@@ -55,17 +55,21 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     }))
 
-    let cursor: ICursor | null = null
-    let startingPosition: vscode.Position = new vscode.Position(0, 0)
+    const state = getDefaultState(vscode.window.activeTextEditor, languageToRootCursorMap)
+    let rootCursor: ICursor | null = state.rootCursor
+    let cursor: ICursor | null = rootCursor
+    let startingPosition = state.startingPosition
+    let tabStop = state.tabStop
     let timeout: NodeJS.Timeout | null = null
     let editing = false
-    let tabStop = getTabStop(vscode.window.activeTextEditor)
 
     // Reset the current cursor when switching editors
     context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {
-        cursor = null
-        startingPosition = editor ? editor.selection.active : new vscode.Position(0, 0)
-        tabStop = getTabStop(editor)
+        const state = getDefaultState(editor, languageToRootCursorMap)
+        rootCursor = state.rootCursor
+        cursor = rootCursor
+        startingPosition = state.startingPosition
+        tabStop = state.tabStop
     }))
 
     context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(async e => {
@@ -74,19 +78,13 @@ export async function activate(context: vscode.ExtensionContext) {
             return
         }
 
-        const rootCursor = languageToRootCursorMap.get(e.document.languageId)
-        if (!rootCursor) {
-            cursor = null
-            return
-        }
-
         for (const change of e.contentChanges) {
-            if (change.rangeLength > 0) {
-                cursor = rootCursor
-                continue
+            if (!cursor) {
+                return
             }
 
-            if (cursor === null) {
+            if (change.rangeLength > 0) {
+                cursor = rootCursor
                 continue
             }
 
@@ -97,7 +95,7 @@ export async function activate(context: vscode.ExtensionContext) {
             if (change.text === tabStop || enterKeyAccepted && /^\n(\s|\t)*$/.test(change.text)) {
                 const editor = vscode.window.activeTextEditor
                 if (!editor) {
-                    cursor = null
+                    cursor = rootCursor
                     continue
                 }
 
@@ -208,6 +206,14 @@ function getConfigurations() {
         }
 
         return { delay, enterKeyAccepted }
+    }
+}
+
+function getDefaultState(editor: vscode.TextEditor | undefined, languageToRootCursorMap: Map<vscode.TextDocument['languageId'], ICursor>) {
+    return {
+        rootCursor: editor && languageToRootCursorMap.get(editor.document.languageId) || null,
+        startingPosition: editor ? editor.selection.active : new vscode.Position(0, 0),
+        tabStop: getTabStop(editor),
     }
 }
 
