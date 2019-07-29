@@ -16,6 +16,7 @@
     "bugs": {
         "url": "https://github.com/ThisIsManta/vscode-hot-snippet/issues"
     },
+    "icon": "docs/logo.png",
     "galleryBanner": {
         "color": "#212121",
         "theme": "dark"
