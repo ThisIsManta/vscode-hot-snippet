@@ -35,6 +35,11 @@ export async function activate(context: vscode.ExtensionContext) {
         languageToRootCursorMap.delete(fp.basename(e.fsPath).replace(/\.json$/, ''))
     }))
 
+    const userConfig = vscode.workspace.getConfiguration('editor')
+    if (userConfig.get<string>('snippetSuggestions') !== 'none') {
+        userConfig.update('snippetSuggestions', 'none', vscode.ConfigurationTarget.Global)
+    }
+
     // Represent a hop limit between key strokes in milliseconds
     let delay = 250
 
@@ -42,17 +47,27 @@ export async function activate(context: vscode.ExtensionContext) {
     let enterKeyAccepted = false
 
     // Read VSCode configurations
-    const configs = getConfigurations()
-    if (configs) {
-        delay = configs.delay
-        enterKeyAccepted = configs.enterKeyAccepted
-    }
-    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(() => {
-        const configs = getConfigurations()
-        if (configs) {
-            delay = configs.delay
-            enterKeyAccepted = configs.enterKeyAccepted
+    function setConfigurations() {
+        const workspaceConfig = vscode.workspace.getConfiguration(
+            'editor',
+            vscode.window.activeTextEditor ? vscode.window.activeTextEditor.document.uri : undefined
+        )
+
+        delay = workspaceConfig.get<number>('quickSuggestionsDelay')!
+        if (delay < 250) {
+            vscode.window.showWarningMessage(
+                `"editor.quickSuggestionsDelay" is set to ${delay}ms, which is too short.
+                    You might find it hard to insert a snippet using this extension as it might trigger IntelliSense menu instead.`)
         }
+
+        enterKeyAccepted = workspaceConfig.get<string>('acceptSuggestionOnEnter') !== 'off'
+    }
+    setConfigurations()
+    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(() => {
+        setConfigurations()
+    }))
+    context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(() => {
+        setConfigurations()
     }))
 
     const state = getDefaultState(vscode.window.activeTextEditor, languageToRootCursorMap)
@@ -61,7 +76,7 @@ export async function activate(context: vscode.ExtensionContext) {
     let startingPosition = state.startingPosition
     let tabStop = state.tabStop
     let timeout: NodeJS.Timeout | null = null
-    let editing = false
+    let editing = { value: false }
 
     // Reset the current cursor when switching editors
     context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {
@@ -72,9 +87,11 @@ export async function activate(context: vscode.ExtensionContext) {
         tabStop = state.tabStop
     }))
 
-    context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(async e => {
+    const enterKeyPattern = /^\r?\n(\s|\t)*$/
+
+    context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(e => {
         // Prevent the unwanted side effects from `editor.edit()` and `editor.insertSnippet()`
-        if (editing) {
+        if (editing.value) {
             return
         }
 
@@ -90,9 +107,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
             if (timeout !== null) {
                 clearTimeout(timeout)
+                timeout = null
             }
 
-            if (change.text === tabStop || enterKeyAccepted && /^\n(\s|\t)*$/.test(change.text)) {
+            if (change.text === tabStop || enterKeyAccepted && enterKeyPattern.test(change.text)) {
                 const editor = vscode.window.activeTextEditor
                 if (!editor) {
                     cursor = rootCursor
@@ -105,22 +123,21 @@ export async function activate(context: vscode.ExtensionContext) {
                     continue
                 }
 
-                editing = true
-
                 const range = new vscode.Range(
                     startingPosition,
                     editor.document.positionAt(change.rangeOffset + change.text.length)
                 )
-                await editor.edit(edit => {
+                editor.edit(edit => {
+                    editing.value = true
                     edit.delete(range)
+                }, { undoStopBefore: false, undoStopAfter: false }).then(() => {
+                    const snippetText = Array.isArray(snippet)
+                        ? snippet.join(editor.document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n')
+                        : snippet
+                    editor.insertSnippet(new vscode.SnippetString(snippetText)).then(() => {
+                        editing.value = false
+                    })
                 })
-
-                const snippetText = Array.isArray(snippet)
-                    ? snippet.join(editor.document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n')
-                    : snippet
-                await editor.insertSnippet(new vscode.SnippetString(snippetText))
-
-                editing = false
 
                 cursor = rootCursor
                 continue
@@ -142,13 +159,15 @@ export async function activate(context: vscode.ExtensionContext) {
                 startingPosition = θ
             }
 
-            timeout = setTimeout(() => {
-                cursor = rootCursor
-            }, delay)
-
             cursor = nextCursor
             continue
         }
+
+        timeout = setTimeout(() => {
+            if (!editing.value) {
+                cursor = rootCursor
+            }
+        }, delay)
     }))
 }
 
@@ -186,27 +205,6 @@ async function getSnippetTree(filePath: string) {
     }
 
     return { language, rootCursor }
-}
-
-function getConfigurations() {
-    if (vscode.window.activeTextEditor) {
-        const config = vscode.workspace.getConfiguration('editor', vscode.window.activeTextEditor.document.uri)
-
-        let delay = config.get<number>('quickSuggestionsDelay')!
-        if (delay < 250) {
-            vscode.window.showWarningMessage(
-                `"editor.quickSuggestionsDelay" is set to ${delay}ms, which is too short.
-                    You might find it hard to insert a snippet using this extension as it might trigger IntelliSense menu instead.`)
-        }
-
-        const enterKeyAccepted = config.get<string>('acceptSuggestionOnEnter') !== 'off'
-
-        if (config.get<string>('snippetSuggestions') !== 'none') {
-            config.update('snippetSuggestions', 'none', vscode.ConfigurationTarget.Global)
-        }
-
-        return { delay, enterKeyAccepted }
-    }
 }
 
 function getDefaultState(editor: vscode.TextEditor | undefined, languageToRootCursorMap: Map<vscode.TextDocument['languageId'], ICursor>) {
