@@ -44,7 +44,7 @@
     },
     "dependencies": {
         "json5": "^2.1.0",
-        "lodash": "^4.17.15",
+        "lodash": "^4.17.19",
         "mz": "^2.7.0",
         "typescript": "^3.5.2"
     }
