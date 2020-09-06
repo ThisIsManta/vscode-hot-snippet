@@ -133,7 +133,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     const editing = { state: false }
 
-    context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(e => {
+    context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(async e => {
         // Prevent the unwanted side effects from `editor.edit()` and `editor.insertSnippet()`
         if (editing.state) {
             return
@@ -167,19 +167,10 @@ export async function activate(context: vscode.ExtensionContext) {
                     continue
                 }
 
-                editor
-                    .edit(edit => {
-                        editing.state = true
-
-                        const spanWithSpace = span.with(undefined, span.end.translate(undefined, 1))
-                        edit.delete(spanWithSpace)
-                    }, { undoStopBefore: false, undoStopAfter: false })
-                    .then(() => {
-                        editor.insertSnippet(snippet.replacement)
-                            .then(() => {
-                                editing.state = false
-                            })
-                    })
+                const spanWithSpace = span.with(undefined, span.end.translate(undefined, 1))
+                editing.state = true
+                await editor.insertSnippet(snippet.replacement, spanWithSpace)
+                editing.state = false
             }
         }
     }))
