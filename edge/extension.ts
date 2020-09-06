@@ -1,4 +1,4 @@
-import { fs } from 'mz'
+import { promises as fs } from 'fs'
 import * as JSON5 from 'json5'
 import * as fp from 'path'
 import * as _ from 'lodash'
