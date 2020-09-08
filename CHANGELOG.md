@@ -1,3 +1,6 @@
+### 2.0.1
+- Remove the undo stop before replacing a snippet.
+
 ### 2.0.0
 - Amend snippet generation logic completely.
 - Add support of project-scoped snippets.

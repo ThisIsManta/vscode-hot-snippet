@@ -169,7 +169,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
                 const spanWithSpace = span.with(undefined, span.end.translate(undefined, 1))
                 editing.state = true
-                await editor.insertSnippet(snippet.replacement, spanWithSpace)
+                await editor.insertSnippet(snippet.replacement, spanWithSpace, { undoStopBefore: true, undoStopAfter: false })
                 editing.state = false
             }
         }
