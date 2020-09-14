@@ -1,3 +1,6 @@
+### 2.0.2
+- Add support of multi-cursors.
+
 ### 2.0.1
 - Remove the undo stop before replacing a snippet.
 

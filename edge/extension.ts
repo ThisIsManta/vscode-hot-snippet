@@ -139,6 +139,11 @@ export async function activate(context: vscode.ExtensionContext) {
             return
         }
 
+        const snippets = _.concat(languages.get(e.document.languageId) || [], languages.get('*') || [])
+        if (snippets.length === 0) {
+            return
+        }
+
         for (const change of e.contentChanges) {
             if (change.rangeLength > 0) {
                 continue
@@ -150,26 +155,27 @@ export async function activate(context: vscode.ExtensionContext) {
                     continue
                 }
 
-                const span = editor.document.getWordRangeAtPosition(editor.selection.active)
-                if (!span) {
-                    return
-                }
-
-                const word = editor.document.getText(span)
-                if (!word) {
-                    return
-                }
-
-                const workspace = vscode.workspace.getWorkspaceFolder(editor.document.uri)
-                const snippets = _.concat(languages.get(editor.document.languageId) || [], languages.get('*') || [])
-                const snippet = snippets.find(snippet => snippet.trigger.test(word) && (snippet.workspace === undefined || snippet.workspace === workspace))
-                if (!snippet) {
-                    continue
-                }
-
-                const spanWithSpace = span.with(undefined, span.end.translate(undefined, 1))
                 editing.state = true
-                await editor.insertSnippet(snippet.replacement, spanWithSpace, { undoStopBefore: true, undoStopAfter: false })
+                await Promise.all(editor.selections.map(async selection => {
+                    const span = editor.document.getWordRangeAtPosition(selection.active)
+                    if (!span) {
+                        return
+                    }
+
+                    const word = editor.document.getText(span)
+                    if (!word) {
+                        return
+                    }
+
+                    const workspace = vscode.workspace.getWorkspaceFolder(editor.document.uri)
+                    const snippet = snippets.find(snippet => snippet.trigger.test(word) && (snippet.workspace === undefined || snippet.workspace === workspace))
+                    if (!snippet) {
+                        return
+                    }
+
+                    const spanWithSpace = span.with(undefined, span.end.translate(undefined, 1))
+                    await editor.insertSnippet(snippet.replacement, spanWithSpace, { undoStopBefore: true, undoStopAfter: false })
+                }))
                 editing.state = false
             }
         }
