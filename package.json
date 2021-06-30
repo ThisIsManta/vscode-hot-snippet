@@ -27,10 +27,10 @@
     "activationEvents": [
         "*"
     ],
-    "main": "./dist/extension",
+    "main": "index.js",
     "scripts": {
-        "compile": "tsc --watch --project ./",
-        "vscode:prepublish": "tsc --skipLibCheck --project ./",
+        "compile": "tsc --watch",
+        "vscode:prepublish": "tsc --skipLibCheck && esbuild dist/extension.js --bundle --platform=node --outfile=index.js --external:vscode",
         "preversion": "git push --dry-run origin master:master",
         "version": "vsce publish",
         "postversion": "git push --tags --quiet origin master:master"
@@ -38,6 +38,7 @@
     "devDependencies": {
         "@types/lodash": "^4.14.170",
         "@types/node": "^14.6.4",
+        "esbuild": "^0.12.12",
         "vscode": "^1.1.37"
     },
     "dependencies": {
