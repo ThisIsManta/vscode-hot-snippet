@@ -151,7 +151,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				continue
 			}
 
-			if (change.text.startsWith(' ')) {
+			if (change.text === ' ') {
 				const editor = vscode.window.activeTextEditor
 				if (!editor) {
 					continue
