@@ -22,15 +22,16 @@
         "theme": "dark"
     },
     "engines": {
-        "vscode": "^1.48.0"
+        "vscode": "^1.57.0"
     },
     "activationEvents": [
         "*"
     ],
     "main": "index.js",
     "scripts": {
-        "compile": "tsc --watch",
-        "vscode:prepublish": "tsc --skipLibCheck && esbuild dist/extension.js --bundle --platform=node --outfile=index.js --external:vscode",
+        "compile": "tsc --project ./",
+        "watch": "npm run compile -- --watch",
+        "vscode:prepublish": "npm run compile -- --skipLibCheck && esbuild dist/extension.js --bundle --platform=node --outfile=index.js --external:vscode",
         "preversion": "git push --dry-run origin master:master",
         "version": "vsce publish",
         "postversion": "git push --tags --quiet origin master:master"

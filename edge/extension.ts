@@ -1,7 +1,9 @@
 import { promises as fs } from 'fs'
 import * as JSON5 from 'json5'
 import * as fp from 'path'
-import * as _ from 'lodash'
+import groupBy from 'lodash/groupBy'
+import sortBy from 'lodash/sortBy'
+import escapeRegExp from 'lodash/escapeRegExp'
 import * as vscode from 'vscode'
 
 type Snippet = {
@@ -42,9 +44,9 @@ export async function activate(context: vscode.ExtensionContext) {
     async function updateSnippets(filePath: string) {
         removeSnippets(filePath)
 
-        const keyedSnippets = _.groupBy(await createSnippets(filePath), snippet => snippet.language)
+        const keyedSnippets = groupBy(await createSnippets(filePath), snippet => snippet.language)
         for (const language in keyedSnippets) {
-            const sortedSnippets = _.sortBy(
+            const sortedSnippets = sortBy(
                 [...(languages.get(language) || []), ...keyedSnippets[language]],
                 snippet => snippet.workspace ? 0 : 1, // Put project-scoped snippets first
             )
@@ -54,10 +56,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
     function removeSnippets(filePathOrWorkspace: string | vscode.WorkspaceFolder) {
         for (const [language, snippets] of languages) {
-            languages.set(language, _.reject(snippets, snippet =>
+            languages.set(language, snippets.filter(snippet =>
                 typeof filePathOrWorkspace === 'string'
-                    ? snippet.filePath === filePathOrWorkspace
-                    : snippet.workspace === filePathOrWorkspace
+                    ? snippet.filePath !== filePathOrWorkspace
+                    : snippet.workspace !== filePathOrWorkspace
             ))
         }
     }
@@ -139,7 +141,7 @@ export async function activate(context: vscode.ExtensionContext) {
             return
         }
 
-        const snippets = _.concat(languages.get(e.document.languageId) || [], languages.get('*') || [])
+        const snippets = (languages.get(e.document.languageId) || []).concat(languages.get('*') || [])
         if (snippets.length === 0) {
             return
         }
@@ -184,7 +186,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 async function createSnippets(filePath: string): Promise<Array<Snippet>> {
     const fileExtension = fp.extname(filePath).replace(/^\./, '')
-    const fileName = fp.basename(filePath).replace(new RegExp(_.escapeRegExp(fileExtension) + '$', 'i'), '').toLowerCase()
+    const fileName = fp.basename(filePath).replace(new RegExp(escapeRegExp(fileExtension) + '$', 'i'), '').toLowerCase()
 
     if (fileExtension !== 'json' && fileExtension !== 'code-snippets') {
         return []
@@ -202,9 +204,7 @@ async function createSnippets(filePath: string): Promise<Array<Snippet>> {
         const text = await fs.readFile(filePath, 'utf-8')
         const json = JSON5.parse(text) as { [name: string]: { scope?: string, prefix: string | Array<string>, body: string | Array<string> } }
 
-        return _.chain(json)
-            .toPairs()
-            .map(([, item]) => item)
+        return Object.values(json)
             .map(item => ({
                 ...item,
                 body: new vscode.SnippetString(
@@ -220,21 +220,19 @@ async function createSnippets(filePath: string): Promise<Array<Snippet>> {
             )
             .map(item => ({
                 language: fileExtension === 'code-snippets' ? item.scope : fileName,
-                trigger: new RegExp('(^|\\W)' + _.escapeRegExp(item.prefix) + '$'),
+                trigger: new RegExp('(^|\\W)' + escapeRegExp(item.prefix) + '$'),
                 replacement: item.body,
                 filePath,
                 workspace,
             }))
             .flatMap(({ language, ...rest }) =>
-                _.chain(language || '*')
+                (language || '*')
                     .split(',')
                     .map(language => language.trim())
-                    .compact()
+                    .filter(language => !!language)
                     .map(language => ({ ...rest, language }))
-                    .value()
             )
             .filter(({ language }) => language === '*' || knownLanguages.includes(language))
-            .value()
 
     } catch (ex) {
         console.error(`Error parsing file ${filePath}:\n`, ex)
