@@ -27,11 +27,12 @@
 	"activationEvents": [
 		"*"
 	],
-	"main": "index.js",
+	"main": "dist/extension.js",
 	"scripts": {
-		"compile": "tsc --project ./",
-		"watch": "npm run compile -- --watch",
-		"vscode:prepublish": "npm run compile -- --skipLibCheck && esbuild dist/extension.js --bundle --platform=node --outfile=index.js --external:vscode",
+		"postinstall": "code --install-extension connor4312.esbuild-problem-matchers",
+		"build": "esbuild edge/extension.ts --bundle --platform=node --outfile=dist/extension.js --external:vscode --format=cjs",
+		"watch": "npm run build -- --watch --sourcemap",
+		"vscode:prepublish": "tsc --skipLibCheck --noEmit && npm run build -- --minify",
 		"preversion": "git push --dry-run origin master:master",
 		"version": "vsce publish",
 		"postversion": "git push --tags --quiet origin master:master"
