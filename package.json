@@ -2,7 +2,7 @@
 	"name": "hot-snippet",
 	"displayName": "Manta's Hot Snippet",
 	"description": "Insert snippets without delays.",
-	"version": "2.0.3",
+	"version": "2.0.4",
 	"publisher": "thisismanta",
 	"categories": [
 		"Snippets"
