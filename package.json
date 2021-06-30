@@ -1,50 +1,50 @@
 {
-    "name": "hot-snippet",
-    "displayName": "Manta's Hot Snippet",
-    "description": "Insert snippets without delays.",
-    "version": "2.0.2",
-    "publisher": "thisismanta",
-    "categories": [
-        "Snippets"
-    ],
-    "keywords": [
-        "snippet"
-    ],
-    "repository": {
-        "url": "https://github.com/ThisIsManta/vscode-hot-snippet"
-    },
-    "bugs": {
-        "url": "https://github.com/ThisIsManta/vscode-hot-snippet/issues"
-    },
-    "icon": "docs/logo.png",
-    "galleryBanner": {
-        "color": "#212121",
-        "theme": "dark"
-    },
-    "engines": {
-        "vscode": "^1.57.0"
-    },
-    "activationEvents": [
-        "*"
-    ],
-    "main": "index.js",
-    "scripts": {
-        "compile": "tsc --project ./",
-        "watch": "npm run compile -- --watch",
-        "vscode:prepublish": "npm run compile -- --skipLibCheck && esbuild dist/extension.js --bundle --platform=node --outfile=index.js --external:vscode",
-        "preversion": "git push --dry-run origin master:master",
-        "version": "vsce publish",
-        "postversion": "git push --tags --quiet origin master:master"
-    },
-    "devDependencies": {
-        "@types/lodash": "^4.14.170",
-        "@types/node": "^14.6.4",
-        "esbuild": "^0.12.12",
-        "vscode": "^1.1.37"
-    },
-    "dependencies": {
-        "json5": "^2.2.0",
-        "lodash": "^4.17.21",
-        "typescript": "^4.3.4"
-    }
+	"name": "hot-snippet",
+	"displayName": "Manta's Hot Snippet",
+	"description": "Insert snippets without delays.",
+	"version": "2.0.2",
+	"publisher": "thisismanta",
+	"categories": [
+		"Snippets"
+	],
+	"keywords": [
+		"snippet"
+	],
+	"repository": {
+		"url": "https://github.com/ThisIsManta/vscode-hot-snippet"
+	},
+	"bugs": {
+		"url": "https://github.com/ThisIsManta/vscode-hot-snippet/issues"
+	},
+	"icon": "docs/logo.png",
+	"galleryBanner": {
+		"color": "#212121",
+		"theme": "dark"
+	},
+	"engines": {
+		"vscode": "^1.57.0"
+	},
+	"activationEvents": [
+		"*"
+	],
+	"main": "index.js",
+	"scripts": {
+		"compile": "tsc --project ./",
+		"watch": "npm run compile -- --watch",
+		"vscode:prepublish": "npm run compile -- --skipLibCheck && esbuild dist/extension.js --bundle --platform=node --outfile=index.js --external:vscode",
+		"preversion": "git push --dry-run origin master:master",
+		"version": "vsce publish",
+		"postversion": "git push --tags --quiet origin master:master"
+	},
+	"devDependencies": {
+		"@types/lodash": "^4.14.170",
+		"@types/node": "^14.6.4",
+		"esbuild": "^0.12.12",
+		"vscode": "^1.1.37"
+	},
+	"dependencies": {
+		"json5": "^2.2.0",
+		"lodash": "^4.17.21",
+		"typescript": "^4.3.4"
+	}
 }
