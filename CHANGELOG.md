@@ -1,3 +1,12 @@
+### 2.0.5
+- Fix not picking up language-specific snippet files (`*.json`).
+
+### 2.0.4
+- Fix unwanted snippet trigger when moving lines.
+
+### 2.0.3
+- Fix slow extension startup time.
+
 ### 2.0.2
 - Add support of multi-cursors.
 

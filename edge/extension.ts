@@ -39,12 +39,14 @@ export async function activate(context: vscode.ExtensionContext) {
 		userConfig.update('snippetSuggestions', 'none', vscode.ConfigurationTarget.Global)
 	}
 
-	const languages = new Map<vscode.TextDocument['languageId'], Array<Snippet>>()
+	const languages = new Map<Snippet['language'], Array<Snippet>>()
+
+	const knownLanguages = new Set(await vscode.languages.getLanguages())
 
 	async function updateSnippets(filePath: string) {
 		removeSnippets(filePath)
 
-		const keyedSnippets = groupBy(await createSnippets(filePath), snippet => snippet.language)
+		const keyedSnippets = groupBy(await createSnippets(filePath, knownLanguages), snippet => snippet.language)
 		for (const language in keyedSnippets) {
 			const sortedSnippets = sortBy(
 				[...(languages.get(language) || []), ...keyedSnippets[language]],
@@ -65,13 +67,13 @@ export async function activate(context: vscode.ExtensionContext) {
 	}
 
 	// #region Global-scoped snippets
-	const globalSnippetDirectoryPath = fp.resolve(context.globalStoragePath, '..', '..', 'snippets')
+	const globalSnippetDirectoryPath = fp.resolve(context.globalStorageUri.fsPath, '..', '..', 'snippets')
 	const globalSnippetFileNameList = await fs.readdir(globalSnippetDirectoryPath)
 	for (const fileName of globalSnippetFileNameList) {
 		await updateSnippets(fp.join(globalSnippetDirectoryPath, fileName))
 	}
 
-	const globalSnippetWatcher = vscode.workspace.createFileSystemWatcher(fp.join(globalSnippetDirectoryPath, '*.{json,code-snippets}'))
+	const globalSnippetWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(globalSnippetDirectoryPath, '*'))
 	context.subscriptions.push(globalSnippetWatcher)
 	context.subscriptions.push(globalSnippetWatcher.onDidCreate(e => {
 		updateSnippets(e.fsPath)
@@ -184,17 +186,15 @@ export async function activate(context: vscode.ExtensionContext) {
 	}))
 }
 
-async function createSnippets(filePath: string): Promise<Array<Snippet>> {
+async function createSnippets(filePath: string, knownLanguages: Set<Snippet['language']>): Promise<Array<Snippet>> {
 	const fileExtension = fp.extname(filePath).replace(/^\./, '')
-	const fileName = fp.basename(filePath).replace(new RegExp(escapeRegExp(fileExtension) + '$', 'i'), '').toLowerCase()
+	const fileName = fp.basename(filePath).replace(new RegExp(escapeRegExp('.' + fileExtension) + '$', 'i'), '').toLowerCase()
 
 	if (fileExtension !== 'json' && fileExtension !== 'code-snippets') {
 		return []
 	}
 
-	const knownLanguages = await vscode.languages.getLanguages()
-
-	if (fileExtension === 'json' && knownLanguages.includes(fileName) === false) {
+	if (fileExtension === 'json' && knownLanguages.has(fileName) === false) {
 		return []
 	}
 
@@ -232,7 +232,7 @@ async function createSnippets(filePath: string): Promise<Array<Snippet>> {
 					.filter(language => !!language)
 					.map(language => ({ ...rest, language }))
 			)
-			.filter(({ language }) => language === '*' || knownLanguages.includes(language))
+			.filter(({ language }) => language === '*' || knownLanguages.has(language))
 
 	} catch (ex) {
 		console.error(`Error parsing file ${filePath}:\n`, ex)
