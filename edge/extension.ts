@@ -1,4 +1,4 @@
-import { promises as fs } from 'fs'
+import * as fs from 'fs/promises'
 import * as JSON5 from 'json5'
 import * as fp from 'path'
 import groupBy from 'lodash/groupBy'
@@ -93,7 +93,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		updateWorkspaces(e)
 	}))
 
-	async function updateWorkspaces({ added = [], removed = [] }: { added?: Array<vscode.WorkspaceFolder>, removed?: Array<vscode.WorkspaceFolder> }) {
+	async function updateWorkspaces({ added = [], removed = [] }: { added?: ReadonlyArray<vscode.WorkspaceFolder>, removed?: ReadonlyArray<vscode.WorkspaceFolder> }) {
 		const localSnippetDirectoryName = fp.join('.vscode', '*.code-snippets')
 
 		// Add project-scoped snippets; made possible by `findFiles` which returns all matching files in every opening workspace
