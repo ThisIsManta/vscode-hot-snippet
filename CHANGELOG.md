@@ -1,3 +1,6 @@
+### 2.1.0
+- Fix not preserving multi-cursors when adding identical snippets.
+
 ### 2.0.5
 - Fix not picking up language-specific snippet files (`*.json`).
 

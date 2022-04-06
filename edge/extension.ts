@@ -1,6 +1,7 @@
 import * as fs from 'fs/promises'
 import * as JSON5 from 'json5'
 import * as fp from 'path'
+import compact from 'lodash/compact'
 import groupBy from 'lodash/groupBy'
 import sortBy from 'lodash/sortBy'
 import escapeRegExp from 'lodash/escapeRegExp'
@@ -31,6 +32,8 @@ type Snippet = {
 	 */
 	workspace?: vscode.WorkspaceFolder
 }
+
+const SPACE = ' '
 
 export async function activate(context: vscode.ExtensionContext) {
 	// Disable built-in snippet feature completely
@@ -135,52 +138,90 @@ export async function activate(context: vscode.ExtensionContext) {
 	}
 	// #endregion
 
-	const editing = { state: false }
+	const state: {
+		editing: boolean,
+	} = {
+		editing: false,
+	}
 
 	context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(async e => {
 		// Prevent the unwanted side effects from `editor.edit()` and `editor.insertSnippet()`
-		if (editing.state) {
+		if (state.editing) {
 			return
 		}
 
-		const snippets = (languages.get(e.document.languageId) || []).concat(languages.get('*') || [])
-		if (snippets.length === 0) {
+		const editor = vscode.window.activeTextEditor
+		if (!editor) {
 			return
 		}
+
+		const availableSnippets = [
+			...(languages.get(e.document.languageId) || []),
+			...(languages.get('*') || []),
+		]
+		if (availableSnippets.length === 0) {
+			return
+		}
+
+		const workspace = vscode.workspace.getWorkspaceFolder(editor.document.uri)
+		const findSnippet = (word: string) => availableSnippets.find(snippet =>
+			snippet.trigger.test(word) &&
+			(snippet.workspace === undefined || snippet.workspace === workspace)
+		)
 
 		for (const change of e.contentChanges) {
-			if (change.rangeLength > 0) {
+			// Trigger snippet insertion when typing SPACE
+			if (change.rangeLength > 0 || change.text !== SPACE) {
 				continue
 			}
 
-			if (change.text === ' ') {
-				const editor = vscode.window.activeTextEditor
-				if (!editor) {
-					continue
+			// Find one or more places to insert snippets
+			const matches = compact(editor.selections.map(selection => {
+				const range = editor.document.getWordRangeAtPosition(selection.active)
+				if (!range) {
+					return null
 				}
 
-				editing.state = true
-				await Promise.all(editor.selections.map(async selection => {
-					const span = editor.document.getWordRangeAtPosition(selection.active)
-					if (!span) {
-						return
-					}
+				const word = editor.document.getText(range)
+				if (!word) {
+					return null
+				}
 
-					const word = editor.document.getText(span)
-					if (!word) {
-						return
-					}
+				return { word, range: range.with(undefined, range.end.translate(undefined, SPACE.length)) }
+			}))
 
-					const workspace = vscode.workspace.getWorkspaceFolder(editor.document.uri)
-					const snippet = snippets.find(snippet => snippet.trigger.test(word) && (snippet.workspace === undefined || snippet.workspace === workspace))
+			if (matches.length === 0) {
+				return
+			}
+
+			if (matches.every(match => match.word === matches[0].word)) {
+				const snippet = findSnippet(matches[0].word)
+				if (!snippet) {
+					return
+				}
+
+				const ranges = matches.map(({ range }) => range)
+
+				// Insert snippets while preserving multi-cursors only if all prefixes are identical
+				state.editing = true
+				await editor.insertSnippet(snippet.replacement, ranges, { undoStopBefore: true, undoStopAfter: false })
+				state.editing = false
+
+			} else {
+				// Prevent interlaced insertion by working from the bottommost first
+				const reversedMatches = sortBy(matches, match => -match.range.start.line, match => -match.range.start.character)
+
+				state.editing = true
+				await Promise.all(reversedMatches.map(async match => {
+					const snippet = findSnippet(match.word)
 					if (!snippet) {
 						return
 					}
 
-					const spanWithSpace = span.with(undefined, span.end.translate(undefined, 1))
-					await editor.insertSnippet(snippet.replacement, spanWithSpace, { undoStopBefore: true, undoStopAfter: false })
+					// Insert snippets one-by-one
+					await editor.insertSnippet(snippet.replacement, match.range, { undoStopBefore: true, undoStopAfter: false })
 				}))
-				editing.state = false
+				state.editing = false
 			}
 		}
 	}))
