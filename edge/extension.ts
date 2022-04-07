@@ -4,6 +4,7 @@ import * as fp from 'path'
 import compact from 'lodash/compact'
 import groupBy from 'lodash/groupBy'
 import sortBy from 'lodash/sortBy'
+import minBy from 'lodash/minBy'
 import escapeRegExp from 'lodash/escapeRegExp'
 import * as vscode from 'vscode'
 
@@ -17,7 +18,7 @@ type Snippet = {
 	/**
 	 * Represent the regular expression of the prefix field.
 	 */
-	trigger: RegExp
+	keyword: RegExp
 
 	replacement: vscode.SnippetString
 
@@ -140,9 +141,58 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	const state: {
 		editing: boolean,
+		lastSelectedText: Array<string>,
 	} = {
 		editing: false,
+		lastSelectedText: [],
 	}
+
+	function onSelectionChange({ selections, textEditor: editor }: Pick<vscode.TextEditorSelectionChangeEvent, 'selections' | 'textEditor'>) {
+		// Prevent the unwanted side effects from `editor.edit()` and `editor.insertSnippet()`
+		if (state.editing) {
+			return
+		}
+
+		const selectedText = selections.map((range): string => {
+			if (range.start.isEqual(range.end)) {
+				return ''
+			}
+
+			const text = editor.document.getText(range).trim()
+
+			// Normalize the indentation of the previously selected text
+			if (text.includes('\n')) {
+				let expandedRange = range.with(range.start.with(undefined, 0))
+				while (expandedRange.start.line < expandedRange.end.line && editor.document.lineAt(expandedRange.end.line).isEmptyOrWhitespace) {
+					expandedRange = expandedRange.with(undefined, expandedRange.end.translate(-1))
+				}
+
+				const expandedText = editor.document.getText(expandedRange)
+				const expandedLines = expandedText.split('\n')
+
+				const minimumIndentation = minBy(expandedLines.map(line => getIndentation(line)), indentation => indentation.length)
+				if (minimumIndentation === undefined || minimumIndentation.length === 0) {
+					return text
+				}
+				const minimumIndentationMatcher = new RegExp('^' + minimumIndentation)
+				const indentationSafeText = expandedLines.map(line => line.replace(minimumIndentationMatcher, '')).join('\n')
+
+				return indentationSafeText
+			}
+
+			return text
+		})
+
+		if (selectedText.some(text => text.length > 0)) {
+			state.lastSelectedText = selectedText
+		}
+	}
+
+	if (vscode.window.activeTextEditor) {
+		onSelectionChange({ selections: vscode.window.activeTextEditor.selections, textEditor: vscode.window.activeTextEditor })
+	}
+
+	context.subscriptions.push(vscode.window.onDidChangeTextEditorSelection(onSelectionChange))
 
 	context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(async e => {
 		// Prevent the unwanted side effects from `editor.edit()` and `editor.insertSnippet()`
@@ -165,7 +215,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 		const workspace = vscode.workspace.getWorkspaceFolder(editor.document.uri)
 		const findSnippet = (word: string) => availableSnippets.find(snippet =>
-			snippet.trigger.test(word) &&
+			snippet.keyword.test(word) &&
 			(snippet.workspace === undefined || snippet.workspace === workspace)
 		)
 
@@ -176,7 +226,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 
 			// Find one or more places to insert snippets
-			const matches = compact(editor.selections.map(selection => {
+			const matches = compact(editor.selections.map((selection, index) => {
 				const range = editor.document.getWordRangeAtPosition(selection.active)
 				if (!range) {
 					return null
@@ -187,15 +237,19 @@ export async function activate(context: vscode.ExtensionContext) {
 					return null
 				}
 
-				return { word, range: range.with(undefined, range.end.translate(undefined, SPACE.length)) }
+				return {
+					word,
+					range: range.with(undefined, range.end.translate(undefined, SPACE.length)),
+					lastSelectedText: state.lastSelectedText[index] || '',
+				}
 			}))
 
 			if (matches.length === 0) {
 				return
 			}
 
-			if (matches.every(match => match.word === matches[0].word)) {
-				const snippet = findSnippet(matches[0].word)
+			if (matches.every(match => match.word === matches[0].word && match.lastSelectedText === matches[0].lastSelectedText)) {
+				const snippet = Φ(findSnippet(matches[0].word), matches[0].lastSelectedText)
 				if (!snippet) {
 					return
 				}
@@ -207,13 +261,15 @@ export async function activate(context: vscode.ExtensionContext) {
 				await editor.insertSnippet(snippet.replacement, ranges, { undoStopBefore: true, undoStopAfter: false })
 				state.editing = false
 
+				state.lastSelectedText = []
+
 			} else {
 				// Prevent interlaced insertion by working from the bottommost first
 				const reversedMatches = sortBy(matches, match => -match.range.start.line, match => -match.range.start.character)
 
 				state.editing = true
 				await Promise.all(reversedMatches.map(async match => {
-					const snippet = findSnippet(match.word)
+					const snippet = Φ(findSnippet(match.word), match.lastSelectedText)
 					if (!snippet) {
 						return
 					}
@@ -222,9 +278,33 @@ export async function activate(context: vscode.ExtensionContext) {
 					await editor.insertSnippet(snippet.replacement, match.range, { undoStopBefore: true, undoStopAfter: false })
 				}))
 				state.editing = false
+
+				state.lastSelectedText = []
 			}
 		}
 	}))
+
+	function Φ(snippet: Snippet | undefined, lastSelectedText: string): Snippet | undefined {
+		if (snippet && lastSelectedText) {
+			const body = snippet.replacement.value.split('\n').map(line => {
+				if (line.includes('$HS_SELECTED_TEXT')) {
+					const indentation = getIndentation(line)
+
+					const interpolation = lastSelectedText.trim().split('\n')
+						.map((line, index) => index === 0 ? line : (indentation + line))
+						.join('\n')
+
+					return line.replaceAll('$HS_SELECTED_TEXT', interpolation)
+				} else {
+					return line
+				}
+			}).join('\n')
+
+			return { ...snippet, replacement: new vscode.SnippetString(body) }
+		}
+
+		return snippet
+	}
 }
 
 async function createSnippets(filePath: string, knownLanguages: Set<Snippet['language']>): Promise<Array<Snippet>> {
@@ -261,7 +341,7 @@ async function createSnippets(filePath: string, knownLanguages: Set<Snippet['lan
 			)
 			.map(item => ({
 				language: fileExtension === 'code-snippets' ? item.scope : fileName,
-				trigger: new RegExp('(^|\\W)' + escapeRegExp(item.prefix) + '$'),
+				keyword: new RegExp('(^|\\W)' + escapeRegExp(item.prefix) + '$'),
 				replacement: item.body,
 				filePath,
 				workspace,
@@ -279,4 +359,8 @@ async function createSnippets(filePath: string, knownLanguages: Set<Snippet['lan
 		console.error(`Error parsing file ${filePath}:\n`, ex)
 		return []
 	}
+}
+
+function getIndentation(line: string) {
+	return line.match(/^\s+/)?.[0] || ''
 }

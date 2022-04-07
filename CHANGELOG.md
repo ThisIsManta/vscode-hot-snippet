@@ -1,4 +1,5 @@
 ### 2.1.0
+- Add support of `$HS_SELECTED_TEXT` variable to the snippet syntax.
 - Fix not preserving multi-cursors when adding identical snippets.
 
 ### 2.0.5
