@@ -32,12 +32,11 @@
 		"postinstall": "code --install-extension connor4312.esbuild-problem-matchers",
 		"build": "esbuild edge/extension.ts --bundle --platform=node --outfile=dist/extension.js --external:vscode --format=cjs",
 		"watch": "npm run build -- --watch --sourcemap",
-		"vscode:prepublish": "tsc --skipLibCheck --noEmit && npm run build -- --minify",
-		"preversion": "git push --dry-run origin master:master",
-		"version": "vsce publish",
-		"postversion": "git push --tags --quiet origin master:master"
+		"vscode:prepublish": "npm run build -- --minify",
+		"version": "npx vsce publish -p $VSCE_PUBLISH_TOKEN"
 	},
 	"devDependencies": {
+		"@thisismanta/semantic-version": "^5.0.2",
 		"@types/lodash": "^4.14.181",
 		"@types/node": "^14.6.4",
 		"@types/vscode": "^1.66.0",
