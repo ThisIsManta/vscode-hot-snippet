@@ -22,11 +22,8 @@
 		"theme": "dark"
 	},
 	"engines": {
-		"vscode": "^1.73.0"
-	},
-	"volta": {
-		"node": "18.16.0",
-		"npm": "9.5.1"
+		"node": ">=18.17.0",
+		"vscode": "^1.86.0"
 	},
 	"activationEvents": [
 		"onStartupFinished"
@@ -40,12 +37,13 @@
 		"version": "npx @vscode/vsce publish"
 	},
 	"devDependencies": {
-		"@thisismanta/semantic-version": "^5.0.2",
-		"@types/lodash": "^4.14.194",
-		"@types/node": ">=18.0.0",
-		"@types/vscode": "^1.73.0",
-		"esbuild": "^0.17.19",
-		"typescript": "^5.0.4"
+		"@thisismanta/semantic-version": "^8.0.0",
+		"@types/lodash": "^4.14.202",
+		"@types/node": "^18.17.0",
+		"@types/vscode": "^1.86.0",
+		"esbuild": "^0.20.0",
+		"lefthook": "^1.6.1",
+		"typescript": "^5.3.3"
 	},
 	"dependencies": {
 		"json5": "^2.2.3",
